@@ -1,0 +1,20 @@
+//
+// Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#ifndef SQLITE_HANDLER_H
+#define SQLITE_HANDLER_H
+
+#include "core/nng_impl.h"
+#include "nng/nng.h"
+#include "supplemental/mqtt/mqtt_qos_db.h"
+
+extern uint32_t sqlite_get_cache_msg_count(nni_mqtt_sqlite_option *);
+extern bool     sqlite_is_enabled(nni_mqtt_sqlite_option *);
+extern nni_msg *sqlite_get_cache_msg(nni_mqtt_sqlite_option *);
+extern void     sqlite_flush_lmq(nni_mqtt_sqlite_option *, nni_lmq *);
+extern void     sqlite_flush_offline_cache(nni_mqtt_sqlite_option *);
+
+#endif

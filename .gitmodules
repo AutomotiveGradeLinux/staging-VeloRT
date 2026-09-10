@@ -1,0 +1,9 @@
+[submodule "extern/l8w8jwt"]
+	path = extern/l8w8jwt
+	url = https://github.com/GlitchedPolygons/l8w8jwt.git
+[submodule "nanomq_cli/nftp-codec"]
+	path = nanomq_cli/nftp-codec
+	url = https://github.com/nanomq/nftp-codec.git
+[submodule "nng/extern/msquic"]
+	path = nng/extern/msquic
+	url = https://github.com/microsoft/msquic.git

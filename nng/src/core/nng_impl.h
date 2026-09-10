@@ -1,0 +1,64 @@
+//
+// Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#ifndef CORE_NNG_IMPL_H
+#define CORE_NNG_IMPL_H
+
+#ifndef NNG_PLATFORM_WINDOWS
+#define unlikely(expr) __builtin_expect(!!(expr), 0)
+#define likely(expr) __builtin_expect(!!(expr), 1)
+#endif
+
+#include "nng/nng.h"
+#include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/nanolib/hocon.h"
+
+// Internal implementation things for NNG, common definitions, etc.
+// All internal modules wind up including this file to avoid having
+// to figure out which header(s) to include.
+//
+// Hopefully it should be clear by the name that this file and its contents
+// are *NOT* for use outside of this library.
+//
+// Symbols that are private to the library begin with the nni_ prefix, whereas
+// those starting with nng_ are intended for external consumption.  The latter
+// symbols should be found in the toplevel nng.h header.
+#include "core/defs.h"
+
+#include "core/platform.h"
+
+#include "core/aio.h"
+#include "core/device.h"
+#include "core/file.h"
+#include "core/idhash.h"
+#include "core/init.h"
+#include "core/list.h"
+#include "core/lmq.h"
+#include "core/message.h"
+#include "core/msgqueue.h"
+#include "core/options.h"
+#include "core/panic.h"
+#include "core/pollable.h"
+#include "core/protocol.h"
+#include "core/reap.h"
+#include "core/stats.h"
+#include "core/stream.h"
+#include "core/strs.h"
+#include "core/taskq.h"
+#include "core/thread.h"
+#include "core/url.h"
+
+// transport needs to come after url
+#include "mqtt/transport.h"
+#include "sp/transport.h"
+// These have to come after the others - particularly transport.h
+
+#include "core/dialer.h"
+#include "core/listener.h"
+#include "core/pipe.h"
+#include "core/socket.h"
+
+#endif // CORE_NNG_IMPL_H

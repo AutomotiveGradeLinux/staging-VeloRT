@@ -1,0 +1,100 @@
+//
+// Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#ifndef PARQUET_FILE_MANAGER_H
+#define PARQUET_FILE_MANAGER_H
+
+#include "parquet_file_queue.h"
+#include "nng/supplemental/nanolib/log.h"
+#include <unordered_map>
+#include <cstring>
+
+// Make it default inline
+class parquet_file_manager {
+    public:
+	void update_queue(const string &topic, const char *filename)
+	{
+		auto it = file_queue_map.find(topic);
+		if (it != file_queue_map.end()) {
+			it->second->update_queue(filename);
+		}
+	}
+	void add_queue(conf_exchange_node *node)
+	{
+		file_queue_map[node->topic] =
+		    make_shared<parquet_file_queue>(node->parquet, node->topic);
+		file_queue_map[node->topic]->init();
+	}
+	CircularQueue *fetch_queue(const string &topic) const
+	{
+		auto           it    = file_queue_map.find(topic);
+		CircularQueue *queue = nullptr;
+		if (it != file_queue_map.end()) {
+			queue = it->second->get_queue();
+		}
+		return queue;
+	}
+
+	conf_parquet *fetch_conf(const string &topic) const
+	{
+		auto          it   = file_queue_map.find(topic);
+		conf_parquet *conf = nullptr;
+		if (it != file_queue_map.end()) {
+			conf = it->second->get_conf();
+		}
+		return conf;
+	}
+
+	uint64_t get_queue_sum(const string &topic) const
+	{
+		auto     it  = file_queue_map.find(topic);
+		uint64_t sum = 0;
+		if (it != file_queue_map.end()) {
+			sum = it->second->get_sum();
+		}
+		return sum;
+	}
+
+	uint32_t get_queue_index(const string &topic) const
+	{
+		auto     it    = file_queue_map.find(topic);
+		uint32_t index = 0;
+		if (it != file_queue_map.end()) {
+			index = it->second->get_index();
+		}
+		log_info("get_queue_index: %u for topic %s", index, topic.c_str());
+		return index;
+	}
+
+	string find_topic_by_filename(const char *filename) const
+	{
+		if (filename == nullptr) {
+			return "";
+		}
+
+		for (const auto &entry : file_queue_map) {
+			CircularQueue *queue = entry.second->get_queue();
+			if (queue == nullptr || queue->size == 0) {
+				continue;
+			}
+			void *elem = nullptr;
+			FOREACH_QUEUE(*queue, elem)
+			{
+				if (elem != nullptr &&
+				    strcmp((const char *) elem, filename) == 0) {
+					return entry.first;
+				}
+			}
+		}
+		return "";
+	}
+	void remove_queue() { };
+
+    private:
+	unordered_map<string, shared_ptr<parquet_file_queue>> file_queue_map;
+};
+
+#endif // PARQUET_FILE_MANAGER_H

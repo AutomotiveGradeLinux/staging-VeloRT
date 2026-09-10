@@ -1,0 +1,58 @@
+#
+# Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+if (NNG_ENABLE_QUIC)
+    set(NNG_QUIC_LIBS msquic none)
+
+    # We assume msquic for now.
+    set(NNG_QUIC_LIB msquic CACHE STRING "QUIC lib to use.")
+    add_subdirectory(msquic)
+    add_dependencies(nng msquic)
+
+    nng_sources(quic_api.c)
+    nng_sources(quic_api.h)
+    nng_sources(msquic_dial.c)
+	# nng_test(quic_api_test)
+    nng_test(msquic_dial_test)
+
+    if(NOT ANDROID)
+        find_path(INTERNAL_MSQUIC_INCLUDE_DIR
+        NAMES msquic.h
+        HINTS ${_MSQUIC_ROOT_HINTS}
+        PATHS ${PROJECT_SOURCE_DIR}/extern/msquic/src
+        PATH_SUFFIXES inc)
+    endif()
+
+    if(NNG_PLATFORM_POSIX)
+        nng_link_libraries(dl)
+    elseif(NNG_PLATFORM_WINDOWS)
+        nng_link_libraries(ws2_32)
+    endif()
+
+    nng_include_directories("$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/_deps/opensslquic-build/include>")
+    nng_include_directories(${CMAKE_BINARY_DIR}/_deps/opensslquic-build/include)
+
+    nng_include_directories("$<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/_deps/opensslquic-build/quictls/include>")
+    nng_include_directories(${CMAKE_BINARY_DIR}/_deps/opensslquic-build/quictls/include)
+
+    nng_include_directories("$<TARGET_PROPERTY:OpenSSL,INTERFACE_INCLUDE_DIRECTORIES>")
+
+    if(NNG_PROTO_MQTT_BROKER)
+        if(NOT ANDROID)
+            nng_include_directories(${INTERNAL_MSQUIC_INCLUDE_DIR})
+        else()
+            nng_include_directories(${PROJECT_SOURCE_DIR}/extern/msquic/src/inc)
+        endif()
+    endif()
+    # set_property(CACHE NNG_QUIC_LIB PROPERTY STRINGS ${NNG_TLS_ENGINES})
+else ()
+    set(NNG_QUIC_LIB none)
+endif ()
+
+# if (NOT NNG_QUIC_LIB STREQUAL "none")
+#     nng_test(quic_test)
+# endif ()

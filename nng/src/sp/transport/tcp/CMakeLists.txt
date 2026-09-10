@@ -1,0 +1,12 @@
+#
+# Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+nng_directory(tcp)
+
+nng_sources_if(NNG_TRANSPORT_TCP tcp.c)
+nng_headers_if(NNG_TRANSPORT_TCP nng/transport/tcp/tcp.h)
+nng_defines_if(NNG_TRANSPORT_TCP NNG_TRANSPORT_TCP)
+nng_test(tcp_test)

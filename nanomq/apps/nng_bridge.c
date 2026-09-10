@@ -1,0 +1,159 @@
+//
+// Copyright 2025 NanoMQ Team, Inc. <jaylin@emqx.io>
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+#include "include/nng_bridge.h"
+#include "nng/nng.h"
+#include "nng/protocol/mqtt/mqtt.h"
+#include "nng/supplemental/nanolib/log.h"
+#include "nng/supplemental/util/platform.h"
+#include "nng/supplemental/nanolib/topics.h"
+#include "nng/supplemental/nanolib/utils.h"
+#include "nng/protocol/mqtt/mqtt_parser.h"
+#include "nng/protocol/pubsub0/sub.h"
+#include "nng/protocol/pubsub0/pub.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "include/nanomq.h"
+#include "include/mqtt_api.h"
+
+int
+nng_proxy_sub_init(conf_nng_sub_node *node, nano_work *work)
+{
+    int rv = 0;
+
+    nng_socket *sub_sock = &node->sub_sock;
+    if ((rv = nng_sub0_open(sub_sock)) != 0) {
+        return rv;
+    }
+	if ((rv = conn_param_alloc(&node->cparam)) != 0) {
+		nng_close(*sub_sock);
+		return rv;
+	}
+    conn_param_set_clientid(node->cparam, node->clientid);
+    conn_param_set_username(node->cparam, "nngproxy_bridge");
+    conn_param_set_proto_ver(node->cparam, MQTT_PROTOCOL_VERSION_v311);
+
+    if ((rv = nng_ctx_open(
+                &work->extra_ctx, *sub_sock)) != 0) {
+        NANO_NNG_FATAL("nng_ctx_open in nng_proxy sub", rv);
+    }
+    for (size_t i = 0; i < node->inwards_count; i++) {
+        rv = nng_ctx_set(work->extra_ctx, NNG_OPT_SUB_SUBSCRIBE,
+            node->sub_list[i]->remote_topic, node->sub_list[i]->remote_topic_len);
+        if (rv != 0) {
+            fatal("Unable to subscribe to topic: %s", nng_strerror(rv));
+        }
+    }
+    // bind virtual client with work
+	work->cparam = node->cparam;
+	if ((rv = nng_listen(node->sub_sock, node->sub_url, NULL, 0)) != 0) {
+		NANO_NNG_FATAL("nng_listen proxy url failed", rv);
+	} else {
+		log_info("nng proxy sub node %s listen on %s", node->name,
+		    node->sub_url);
+	}
+	return 0;
+}
+
+int
+nng_proxy_pub_init(conf_nng_pub_node *node)
+{
+    int rv = 0;
+
+    nng_socket *pub_sock = &node->pub_sock;
+    if ((rv = nng_pub0_open(pub_sock)) != 0) {
+        return rv;
+    }
+	if ((rv = conn_param_alloc(&node->cparam)) != 0) {
+		nng_close(*pub_sock);
+		return rv;
+	}
+    conn_param_set_clientid(node->cparam, node->clientid);
+    conn_param_set_username(node->cparam, "nngproxy_bridge");
+    conn_param_set_proto_ver(node->cparam, MQTT_PROTOCOL_VERSION_v311);
+    if ((rv = nng_listen(node->pub_sock, node->pub_url, NULL, 0)) != 0) {
+	    NANO_NNG_FATAL("nng_listen proxy url failed", rv);
+    } else {
+	    log_info("nng proxy pub node %s listen on %s", node->name,
+		node->pub_url);
+    }
+    return 0;
+}
+
+void
+nng_pub_handler(nano_work *work)
+{
+	int      rv    = 0;
+	if ((work->pub_packet->var_header.publish.topic_name.len >=
+	        strlen("$SYS")) &&
+	    strncmp(work->pub_packet->var_header.publish.topic_name.body,
+	        "$SYS", strlen("$SYS")) == 0) {
+		return;
+	}
+    mqtt_string *sub_topic = &work->pub_packet->var_header.publish.topic_name;
+    // convert mqtt msg to nng pub msg
+
+    uint32_t plen = 0;
+
+    uint8_t *payload = work->pub_packet->payload.data;
+    plen = work->pub_packet->payload.len;
+
+    for (size_t t = 0; t < work->config->nng_proxy.pub_count; t++) {
+	    // iterate all pub node
+	    conf_nng_pub_node *node = work->config->nng_proxy.pnodes[t];
+	    for (size_t i = 0; i < node->forwards_count; i++) {
+		    log_debug("local topic %s msg topic %s",
+			node->pub_list[i]->local_topic, sub_topic->body);
+		    if (!topic_filter(node->pub_list[i]->local_topic,
+			    (const char *) sub_topic->body))
+			    continue;
+		    {
+			    nng_msg *new_msg;
+			    if ((rv = nng_msg_alloc(&new_msg, 0)) != 0) {
+				    log_error(
+					"Failed to alloc nng message: %s(%d)",
+					nng_strerror(rv), rv);
+				    continue;
+			    }
+
+			    char  *tmp_topic = NULL;
+			    size_t tlen      = 0;
+			    const char *delimiter = "/";
+			    size_t      dlen      = 1;
+
+			    if (node->pub_list[i]->remote_topic_len > 0) {
+				    tmp_topic =
+					node->pub_list[i]->remote_topic;
+				    tlen = node->pub_list[i]->remote_topic_len;
+			    } else {
+				    tmp_topic = sub_topic->body;
+				    tlen      = sub_topic->len;
+			    }
+
+			    if (node->pub_list[i]->nng_delimiter_len > 0) {
+				    delimiter = node->pub_list[i]->nng_delimiter;
+				    dlen      = node->pub_list[i]->nng_delimiter_len;
+			    }
+
+			    nng_msg_append(new_msg, tmp_topic, tlen);
+			    nng_msg_append(new_msg, delimiter, dlen);
+			    nng_msg_append(new_msg, payload, plen);
+
+			    rv = nng_sendmsg(
+				node->pub_sock, new_msg, NNG_FLAG_NONBLOCK);
+			    if (rv != 0) {
+				    log_error(
+					"Failed to send nng message: %s(%d)",
+					nng_strerror(rv), rv);
+				    nng_msg_free(new_msg);
+			    }
+		    }
+	    }
+    }
+}
